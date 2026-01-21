@@ -21,7 +21,7 @@ Building this project provided hands-on experience with **Systems Programming** 
 
 - **ROS 2 Architecture:** Implemented a pure C++ Publisher/Subscriber model using `rclcpp` to pass messages between independent nodes.
 - **Data Serialization:** Manually parsed and formatted complex telemetry data within standard `std_msgs::msg::String` topics to simulate low-level data handling.
-- **Algorithmic Logic:** Implemented a sliding window algorithm (std::vector) to calculate moving averages for trend detection.
+- **Algorithmic Logic:** Implemented a sliding window algorithm (std::deque) with O(1) run-time that calculatea moving averages for trend detection.
 - **Concurrency & Timing:** Managed asynchronous callbacks and wall-timers (2 Hz frequency) to ensure consistent telemetry broadcasting every 500 milliseconds.
 - **Memory Management:** Utilized C++ smart pointers (`std::shared_ptr`) for safe resource management within the ROS node structure.    
 
