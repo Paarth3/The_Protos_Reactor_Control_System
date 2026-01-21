@@ -1,30 +1,40 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
-#include "std_msgs/msg/float32.hpp"
-#include <vector>
 #include <string>
+#include <deque>
 
-std::string string_topic = "/hyperion/telemetry";
-std::vector<float> temp_history;
-float curr_temp_avg = 0;
+class MovingAverage {
+private:
+    std::deque<float> temp_history;
+    const size_t max_size = 10;
+    double running_sum = 0.0;
 
-double calculateAverage(const std::vector<float>& data) {
-    if (data.empty()) {
-        return 0.0;
+public:
+    float update(float new_temp) {
+        if (temp_history.size() >= max_size) {
+            running_sum -= temp_history.front();
+            temp_history.pop_front();
+        }
+
+        temp_history.push_back(new_temp);
+        running_sum += new_temp;
+
+        return static_cast<float>(running_sum / temp_history.size());
     }
-
-    double sum = 0;
-    for (int element : data) {
-        sum += element;
+    
+    float getCurrentAverage() const {
+        if (temp_history.empty()) return 0.0f;
+        return static_cast<float>(running_sum / temp_history.size());
     }
-
-    return sum / data.size();
-}
+};
 
 class SubscriberNode : public rclcpp::Node {
     public:
         SubscriberNode() : Node("subscriber_node") {
-            sub_string = this->create_subscription<std_msgs::msg::String>(string_topic, 10, [this](const std::shared_ptr<std_msgs::msg::String> msg) {this->callback_fun(msg);});
+            sub_string = this->create_subscription<std_msgs::msg::String>(
+                "/hyperion/telemetry", 10, 
+                [this](const std::shared_ptr<std_msgs::msg::String> msg) {this->callback_fun(msg);}
+            );
         }
 
         void callback_fun(std::shared_ptr<std_msgs::msg::String> msg) {
@@ -34,29 +44,21 @@ class SubscriberNode : public rclcpp::Node {
 
             float temperature = std::stof(temp_part.substr((temp_part.find_first_of(':')) + 1));
             float pressure = std::stof(pressure_part.substr((pressure_part.find_first_of(':')) + 1));
-
-            if (temp_history.size() < 10) {
-                temp_history.push_back(temperature);
-            }
-            else {
-                temp_history.erase(temp_history.begin());
-                temp_history.push_back(temperature);
-            }
-
-            float new_avg = calculateAverage(temp_history);
+          
+            float prev_avg = moving_avg.getCurrentAverage();
+            
+            float new_avg = moving_avg.update(temperature);
 
             if ((pressure > 1500) || (temperature > 2000)) {
                 RCLCPP_ERROR(this->get_logger(), 
                     "\n\t************************************************"
                     "\n\t* MELTDOWN IMMINENT"
-                    "\n\t************************************************"
-                    "\n\t* Pressure > 1500 or Temperature > 2000"
                     "\n\t************************************************");
             }
-            else if ((new_avg - curr_temp_avg) > 5) {
+            else if ((new_avg - prev_avg) > 5) {
                 RCLCPP_WARN(this->get_logger(), 
                     "\n\t>>> RAPID TEMPERATURE RISE DETECTED >>>"
-                    "\n\t>>> Rate: +%.2f deg/cycle", new_avg - curr_temp_avg);
+                    "\n\t>>> Rate: +%.2f deg/cycle", new_avg - prev_avg);
             }
             
             RCLCPP_INFO(this->get_logger(),
@@ -66,23 +68,18 @@ class SubscriberNode : public rclcpp::Node {
                 "\n|  Avg Temp     : %8.2f C                             |"
                 "\n|---------------------------------------------------------|", 
                 temperature, pressure, new_avg);
-
-            curr_temp_avg = new_avg;
         }
 
     private:
         std::shared_ptr<rclcpp::Subscription<std_msgs::msg::String>> sub_string;
+        
+        MovingAverage moving_avg; 
 };
 
 int main(int argc, char* argv[]){
-
     rclcpp::init(argc, argv);
-
     auto mySubscriber = std::make_shared<SubscriberNode>();
-
     rclcpp::spin(mySubscriber);
-
     rclcpp::shutdown();
-
     return 0;
 }
